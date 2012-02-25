@@ -1,7 +1,6 @@
 package rapid
 
 import (
-	"log"
 	"testing"
 	"net"
 )
@@ -9,12 +8,20 @@ import (
 func TestConnection (t *testing.T) {
 	server, client := net.Pipe();
 	net.Pipe();
-			
-	events := make(chan *Event)
-	done := make(chan bool)
 
+	events := make(chan *Event)
+	ctx := NewContext(events)
+	ctx.InitiateConnection(client)
+
+	if !ctx.Connected {
+		t.Error("Failed to connect to local pipe")
+		return
+	}
+
+	defer ctx.Shutdown()
+	
 	go func () {
-		Connect(events, done, client)
+		ctx.ClientLoop()
 	}()
 
 	server.Write([]byte("{ \"type\":\"test_type\", \"params\": { \"x\": 1, \"y\": 2 } }\x00"));
@@ -27,10 +34,8 @@ func TestConnection (t *testing.T) {
 				return
 			} else {
 				t.Errorf("Got unexpected event %#v.", i.type_name)
+				return
 			}
-		case <-done:
-			log.Println("Done")
-			return
 		}
 	}
 }
