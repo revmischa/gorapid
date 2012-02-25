@@ -5,12 +5,13 @@ import (
 	"os"
 	"net"
 	"fmt"
-	"time"
 	"json"
-	"strings"
+	"bytes"
 )
 
 const debug = true
+
+type EventChan chan<- *Event
 
 type Event struct {
 	root      map[string]interface{}
@@ -18,59 +19,63 @@ type Event struct {
 	params    map[string]string
 }
 
-func Connect(out chan<- *Event, done chan<- bool) (os.Error) {
+func Connect(out EventChan, done chan<- bool, c net.Conn) (os.Error) {
 	server := "localhost:6000"
-	connected := false
-	var c net.Conn
-
-	for !connected {
+	connected := c != nil
+	
+	if !connected {
 		Log("Connecting to %s", server)
+		var err os.Error
 		c, err = net.Dial("tcp", server)
 
 		if err != nil {
 			log.Printf("Error connecting: %s\n", err)
-			connected = false
-			time.Sleep(1000 * 1000 * 1000 * 3)
-			continue
-		} else {
-			connected = true
-		}
-
-		Debug("Connected")
-		var buf [4048]byte
-		len, err := c.Read(buf[:])
-
-		if len == 0 || err != nil {
-			c.Close()
-			connected = false
-		}
-
-		elements := strings.Split(buf[:], "\x00")
-
-		for _, e := range elements {
-			parseFragment(e)
+			return err
 		}
 	}
+
+	Debug("Connected")
+	var buf [4048]byte
+	len, err := c.Read(buf[:])
+
+	if len == 0 || err != nil {
+		c.Close()
+		return err
+	}
+
+	sep := []byte{0}
+	elements := bytes.Split(buf[0:4048], sep)
+
+	for _, e := range elements {
+		parseFragment(e, out)
+	}
+
+	return nil
 }
 
-func parseFragment(frag string) {
+func parseFragment(frag []byte, out EventChan) {
 	var root map[string]interface{}
 
+	if len(frag) == 0 {
+		return
+	}
+	
 	err := json.Unmarshal(frag, &root)
 	if err != nil || root == nil {
-		log.Printf("Error parsing JSON '%s': %v\n", buf, err)
+		log.Printf("Error parsing JSON '%s': %v\n", frag, err)
+		os.Exit(1)
 		return
 	}
 	
 	params := make(map[string]string)
 	var type_name string
 
-	switch type_name_type := root["type"].(type) {
+	switch nametype := root["type"].(type) {
 	case nil:
 		log.Printf("Got JSON message with no type field defined\n")
 	case string:
-		log.Printf("Got message with type_name=%v\n")
-		type_name = type_name_type
+		log.Printf("Got message with type_name=%v\n", nametype)
+		type_name = nametype
 	default:
 		log.Printf("Got JSON message with unknown type for 'type' field\n")
 	}

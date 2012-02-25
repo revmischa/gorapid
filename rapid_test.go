@@ -1,24 +1,33 @@
-package main
+package rapid
 
 import (
-    "fmt"
-    "./rapid"
-	"flag";
-	"log";
+	"log"
+	"testing"
+	"net"
 )
 
-var debug = flag.Bool("v", false, "verbose")
-
-func main() {
-	events := make(chan *rapid.Event)
+func TestConnection (t *testing.T) {
+	server, client := net.Pipe();
+	net.Pipe();
+			
+	events := make(chan *Event)
 	done := make(chan bool)
 
-	go rapid.Connect(events, done)
+	go func () {
+		Connect(events, done, client)
+	}()
+
+	server.Write([]byte("{ \"type\":\"test_type\", \"params\": { \"x\": 1, \"y\": 2 } }\x00"));
 	
 	for {
 		select {
 		case i := <-events:
-			fmt.Printf("i: %#v\n", i)
+			if (i.type_name == "test_type") {
+				// success
+				return
+			} else {
+				t.Errorf("Got unexpected event %#v.", i.type_name)
+			}
 		case <-done:
 			log.Println("Done")
 			return
