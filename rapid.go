@@ -6,7 +6,6 @@ import (
 	"net"
 	"fmt"
 	"json"
-	"bytes"
 	"time"
 )
 
@@ -78,8 +77,6 @@ func (ctx *Ctx) Read(p []byte) (int, os.Error) {
 // loops until Shutdown() is called
 // reconnects automatically if connection is lost
 func (ctx *Ctx) ClientLoop() {
-	var buf [4048]byte
-
 	for !ctx.shutdown {
 		// reconnect if we're not connected
 		if !ctx.Connected || ctx.Conn == nil {
@@ -88,11 +85,11 @@ func (ctx *Ctx) ClientLoop() {
 		}
 		
 		// read a chunk of data
-		err := ctx.ReadAndParseFragment();
+		err := ctx.ReadEvents()
 
 		// failed to read
 		if err != nil {
-			Debug("failed to read/parse")
+			Debug("failed to read")
 			
 			if ctx.shutdown {
 				// socket got closed while we were reading, whatever
@@ -106,16 +103,6 @@ func (ctx *Ctx) ClientLoop() {
 			Log("Error reading from connection: %v", err)
 		
 			continue
-		}
-
-		// split JSON on NULL char
-		sep := []byte{0}
-		elements := bytes.Split(buf[0:4048], sep)
-
-		
-		for i, e := range elements {
-			fmt.Printf("Fragment %d: \"%s\"\n", i, e)
-			//go ctx.parseFragment(e)
 		}
 	}
 }
@@ -150,7 +137,7 @@ func (ctx *Ctx) Reconnect() {
 	ctx.InitiateConnection(ctx.ServerAddress)
 }
 
-func (ctx *Ctx) ReadAndParseFragment() os.Error {
+func (ctx *Ctx) ReadEvents() os.Error {
 	var evt Event
 	decoder := json.NewDecoder(ctx)
 	err := decoder.Decode(&evt)
