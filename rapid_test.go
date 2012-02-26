@@ -28,7 +28,7 @@ func TestConnection (t *testing.T) {
 		done = true
 	}()
 
-	server.Write([]byte("{ \"type\":\"test_type\", \"params\": { \"x\": 1, \"y\": 2 } }\x00{"));
+	server.Write([]byte("{ \"type\":\"test_type\", \"params\": { \"x\": 1, \"y\": 2 } }{"));
 	server.Write([]byte(`"type":"final_test_type", "extraJunk": 123}`))
 	
 	for !done {

@@ -107,6 +107,47 @@ func (ctx *Ctx) ClientLoop() {
 	}
 }
 
+/*
+
+ what I really want is for this to take a JSON key named "type" and stick it in Event.TypeName...
+ 
+func (evt *Event) UnmarshalJSON(data []byte) os.Error {
+	
+	fmt.Printf("got data: '%s'\n", data)
+
+	err := json.Unmarshal(data, evt)
+	if err != nil {
+		fmt.Printf("Error decoding '%s': %v\n", data, err)
+	}
+
+	fmt.Printf("Evt: %v", evt)
+
+	return err
+}
+*/
+func (ctx *Ctx) ReadEvents() os.Error {
+	// we expect a slice of Events
+	type Outer struct {
+		Events []*Event
+	}
+	var outer Outer
+
+	// read from stream, parse Events into outer
+	decoder := json.NewDecoder(ctx)
+	err := decoder.Decode(&outer)
+
+	if err != nil {
+		return err
+	}
+
+	for _, evt := range outer.Events {
+		log.Printf("Decoded object: %v\n", evt)
+		ctx.Out <- evt
+	}
+
+	return nil
+}
+
 func (ctx *Ctx) Shutdown() {
 	Debug("shutdown")
 	ctx.Connected = false
@@ -135,21 +176,6 @@ func (ctx *Ctx) Reconnect() {
 	time.Sleep(1000 * 1000 * 1000 * 3)
 
 	ctx.InitiateConnection(ctx.ServerAddress)
-}
-
-func (ctx *Ctx) ReadEvents() os.Error {
-	var evt Event
-	decoder := json.NewDecoder(ctx)
-	err := decoder.Decode(&evt)
-
-	if err != nil {
-		return err
-	}
-
-	log.Printf("Decoded object: %v\n", evt)
-	ctx.Out <- &evt
-
-	return nil
 }
 
 func Log(format string, v ...interface{}) {
