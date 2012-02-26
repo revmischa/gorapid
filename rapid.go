@@ -15,9 +15,8 @@ const debug = true
 type EventChan chan<- *Event
 
 type Event struct {
-	root      map[string]interface{}
-	type_name string
-	params    map[string]string
+	TypeName  string
+	Params    map[string]interface{}
 }
 
 type Ctx struct {
@@ -71,6 +70,11 @@ func (ctx *Ctx) InitiateConnection(dest interface{}) {
 	Debug("Connected")
 }
 
+func (ctx *Ctx) Read(p []byte) (int, os.Error) {
+	// read a chunk of data
+	return ctx.Conn.Read(p[:])
+}
+
 // loops until Shutdown() is called
 // reconnects automatically if connection is lost
 func (ctx *Ctx) ClientLoop() {
@@ -84,10 +88,12 @@ func (ctx *Ctx) ClientLoop() {
 		}
 		
 		// read a chunk of data
-		len, err := ctx.Conn.Read(buf[:])
+		err := ctx.ReadAndParseFragment();
 
 		// failed to read
-		if len == 0 || err != nil {
+		if err != nil {
+			Debug("failed to read/parse")
+			
 			if ctx.shutdown {
 				// socket got closed while we were reading, whatever
 				continue
@@ -97,9 +103,7 @@ func (ctx *Ctx) ClientLoop() {
 			ctx.Connected = false
 			ctx.Conn.Close()
 
-			if err != nil {
-				Log("Error reading from connection: %v", err)
-			}
+			Log("Error reading from connection: %v", err)
 		
 			continue
 		}
@@ -108,8 +112,10 @@ func (ctx *Ctx) ClientLoop() {
 		sep := []byte{0}
 		elements := bytes.Split(buf[0:4048], sep)
 
-		for _, e := range elements {
-			ctx.parseFragment(e, ctx.Out)
+		
+		for i, e := range elements {
+			fmt.Printf("Fragment %d: \"%s\"\n", i, e)
+			//go ctx.parseFragment(e)
 		}
 	}
 }
@@ -135,6 +141,7 @@ func (ctx *Ctx) Reconnect() {
 	if ctx.ServerAddress == "" {
 		log.Println("ServerAddress is not defined, cannot reconnect")
 		ctx.Shutdown()
+		return
 	}
 
 	// wait 3 seconds before reconnecting
@@ -143,35 +150,19 @@ func (ctx *Ctx) Reconnect() {
 	ctx.InitiateConnection(ctx.ServerAddress)
 }
 
-func (ctx *Ctx) parseFragment(frag []byte, out EventChan) {
-	var root map[string]interface{}
+func (ctx *Ctx) ReadAndParseFragment() os.Error {
+	var evt Event
+	decoder := json.NewDecoder(ctx)
+	err := decoder.Decode(&evt)
 
-	if len(frag) == 0 {
-		return
-	}
-	
-	err := json.Unmarshal(frag, &root)
-	if err != nil || root == nil {
-		log.Printf("Error parsing JSON '%s': %v\n", frag, err)
-		os.Exit(1)
-		return
-	}
-	
-	params := make(map[string]string)
-	var type_name string
-
-	switch nametype := root["type"].(type) {
-	case nil:
-		log.Printf("Got JSON message with no type field defined\n")
-	case string:
-		log.Printf("Got message with type_name=%v\n", nametype)
-		type_name = nametype
-	default:
-		log.Printf("Got JSON message with unknown type for 'type' field\n")
+	if err != nil {
+		return err
 	}
 
-	evt := Event{root, type_name, params}
-	out <- &evt
+	log.Printf("Decoded object: %v\n", evt)
+	ctx.Out <- &evt
+
+	return nil
 }
 
 func Log(format string, v ...interface{}) {

@@ -3,6 +3,7 @@ package rapid
 import (
 	"testing"
 	"net"
+	"fmt"
 )
 
 func TestConnection (t *testing.T) {
@@ -19,21 +20,27 @@ func TestConnection (t *testing.T) {
 	}
 
 	defer ctx.Shutdown()
+
+	done := false
 	
 	go func () {
 		ctx.ClientLoop()
+		done = true
 	}()
 
-	server.Write([]byte("{ \"type\":\"test_type\", \"params\": { \"x\": 1, \"y\": 2 } }\x00"));
+	server.Write([]byte("{ \"type\":\"test_type\", \"params\": { \"x\": 1, \"y\": 2 } }\x00{"));
+	server.Write([]byte(`"type":"final_test_type", "extraJunk": 123}`))
 	
-	for {
+	for !done {
 		select {
 		case i := <-events:
-			if (i.type_name == "test_type") {
+			if (i.TypeName == "final_test_type") {
 				// success
 				return
 			} else {
-				t.Errorf("Got unexpected event %#v.", i.type_name)
+				err := fmt.Sprintf("Got unexpected event %#v.", i.TypeName)
+				fmt.Println(err)
+				t.Error(err)
 				return
 			}
 		}
